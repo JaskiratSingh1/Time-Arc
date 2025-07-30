@@ -15,8 +15,8 @@ struct ContentView: View {
         Task(name: "Default", elapsedTime: 0)
     ]
     @State private var selectedTaskIndex: Int = 0
-    @State private var showingAddTask = false
-    @State private var newTaskName = ""
+    @State private var showingTaskSheet = false
+    @State private var showingCalendar = false
     
     @Environment(\.modelContext) private var modelContext
     @State private var lastTickDate = Date()
@@ -36,46 +36,26 @@ struct ContentView: View {
 
                 VStack {
                     VStack {
-                        Picker("Select Task", selection: $selectedTaskIndex) {
-                            ForEach(tasks.indices, id: \.self) { idx in
-                                Text(tasks[idx].name).tag(idx)
-                            }
-                        }
-                        .pickerStyle(MenuPickerStyle())
-                        // Load the selected task's time
-                        .onChange(of: selectedTaskIndex) { newIndex in
-                            elapsedTime = tasks[newIndex].elapsedTime
-                        }
-                        
+                        // Task chooser button
                         HStack {
                             Spacer()
-                            Button(action: {
-                                showingAddTask = true
-                                DispatchQueue.main.async {
-                                    // newTaskFieldIsFocused = true
+                            Button {
+                                showingTaskSheet = true
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Text(tasks[selectedTaskIndex].name)
+                                        .font(.system(size: 40, weight: .semibold))
+                                    Image(systemName: "chevron.down")
+                                        .font(.system(size: 30, weight: .semibold))
                                 }
-                            }) {
-                                Image(systemName: "plus.circle")
-                                    .font(.title2)
                             }
-                            .padding(.horizontal, 5)
-                            .foregroundColor(.black)
-
-                            Button(action: {
-                                guard tasks.count > 1 else { return }
-                                // Save current time
-                                tasks[selectedTaskIndex].elapsedTime = elapsedTime
-                                // Remove task and clamp selection
-                                tasks.remove(at: selectedTaskIndex)
-                                selectedTaskIndex = max(0, selectedTaskIndex - 1)
-                                elapsedTime = tasks[selectedTaskIndex].elapsedTime
-                            }) {
-                                Image(systemName: "minus.circle")
-                                    .font(.title2)
+                            .sheet(isPresented: $showingTaskSheet) {
+                                TaskSheet(
+                                    tasks: $tasks,
+                                    selectedIndex: $selectedTaskIndex,
+                                    elapsedTime: $elapsedTime
+                                )
                             }
-                            .padding(.horizontal, 5)
-                            .foregroundColor(.black)
-                            .disabled(tasks.count <= 1)
                             Spacer()
                         }
                     }
@@ -113,25 +93,19 @@ struct ContentView: View {
                 }
             }
             .tint(.black)
-            .alert("New Task", isPresented: $showingAddTask) {
-                TextField("Task Name", text: $newTaskName)
-                Button("Add") {
-                    let trimmed = newTaskName.trimmingCharacters(in: .whitespaces)
-                    guard !trimmed.isEmpty else { return }
-                    tasks[selectedTaskIndex].elapsedTime = elapsedTime
-                    tasks.append(Task(name: trimmed, elapsedTime: 0))
-                    selectedTaskIndex = tasks.count - 1
-                    elapsedTime = 0
-                    newTaskName = ""
-                }
-                Button("Cancel", role: .cancel) {}
-            }
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    NavigationLink(destination: CalendarView()) {
+                    Button {
+                        showingCalendar = true
+                    } label: {
                         Image(systemName: "calendar")
+                            .font(.title)
+                            .foregroundColor(.black)
                     }
                 }
+            }
+            .sheet(isPresented: $showingCalendar) {
+                CalendarView()
             }
         } // end NavigationStack
     }
@@ -255,5 +229,70 @@ struct CalendarView: View {
         let mins = Int(seconds) / 60
         let secs = Int(seconds) % 60
         return String(format: "%02d:%02d", mins, secs)
+    }
+}
+
+
+// MARK: - Task selection sheet
+
+struct TaskSheet: View {
+    @Binding var tasks: [Task]
+    @Binding var selectedIndex: Int
+    @Binding var elapsedTime: TimeInterval
+    
+    @Environment(\.dismiss) private var dismiss
+    @State private var newTaskName = ""
+    @State private var showingAddAlert = false
+    
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(tasks.indices, id: \.self) { idx in
+                    Button {
+                        selectedIndex = idx
+                        elapsedTime = tasks[idx].elapsedTime
+                        dismiss()
+                    } label: {
+                        HStack {
+                            Text(tasks[idx].name)
+                                .font(.title2)
+                            if idx == selectedIndex {
+                                Spacer()
+                                Image(systemName: "checkmark")
+                                    .foregroundColor(.accentColor)
+                            }
+                        }
+                    }
+                }
+                .onDelete { indexSet in
+                    if tasks.count > 1 {
+                        tasks.remove(atOffsets: indexSet)
+                        selectedIndex = min(selectedIndex, tasks.count - 1)
+                        elapsedTime = tasks[selectedIndex].elapsedTime
+                    }
+                }
+            }
+            .navigationTitle("Select Task")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Done") { dismiss() }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Add") { showingAddAlert = true }
+                }
+            }
+            .alert("New Task", isPresented: $showingAddAlert) {
+                TextField("Name", text: $newTaskName)
+                Button("Add") {
+                    let trimmed = newTaskName.trimmingCharacters(in: .whitespaces)
+                    guard !trimmed.isEmpty else { return }
+                    tasks.append(Task(name: trimmed, elapsedTime: 0))
+                    selectedIndex = tasks.count - 1
+                    elapsedTime = 0
+                    newTaskName = ""
+                }
+                Button("Cancel", role: .cancel) { }
+            }
+        }
     }
 }
