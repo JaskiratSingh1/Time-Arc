@@ -13,5 +13,6 @@ struct Time_ArcApp: App {
         WindowGroup {
             ContentView()
         }
+        .modelContainer(for: [DailyTaskTime.self])
     }
 }
